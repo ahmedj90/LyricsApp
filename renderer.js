@@ -12,9 +12,10 @@ const ipcRenderer = electron.ipcRenderer;
 
 
 // Listen for main message
-ipcRenderer.on('ping', (event, arg) => {  
+ipcRenderer.on('ping', (event, arg) => {  	
 	var x = document.querySelectorAll("#curr_pos");
-	x[0].textContent=arg;
-    console.log('renderer' + arg);
+	x[0].textContent=arg.current_position;
 
+	var z = document.querySelectorAll("#song_name");
+	z[0].textContent=arg.track.properties.name;	
 });

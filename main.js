@@ -1,17 +1,17 @@
-const electron = require('electron')
-var now = require("performance-now")
+const electron = require('electron');
+var now = require("performance-now");
 var spotify = require('spotify-node-applescript');
 var Track = require('js/modules/track.module.js');
 var Enum = require('js/modules/common/enums.js');
 const ipcMain = electron.ipcMain;
 
 // Module to control application life.
-const app = electron.app
+const app = electron.app;
 // Module to create native browser window.
-const BrowserWindow = electron.BrowserWindow
+const BrowserWindow = electron.BrowserWindow;
 
-const path = require('path')
-const url = require('url')
+const path = require('path');
+const url = require('url');
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -29,10 +29,10 @@ function spotify_track_changed_event_handler(){
   console.log("Event: Track Changed.");
 }
 
-function spotify_track_position_changed_event_handler(current_position){
+function spotify_track_position_changed_event_handler(track, current_position){
   console.log("Event: position changed to: " + current_position);
   //mainWindow.webContents.send('ping', 5);
-  mainWindow.webContents.send('ping', current_position);
+  mainWindow.webContents.send('ping', {current_position: current_position, track: track});
 }
 
 function createWindow(){
@@ -108,7 +108,7 @@ function MonitorSpotify () {
 
                           //3-handle progress of track
                           if(spotifyInstance && (spotifyInstance.state === 'playing')){
-                              spotify_track_position_changed_event_handler(spotifyInstance.position);
+                              spotify_track_position_changed_event_handler(track, spotifyInstance.position);
                           }
 
                           //4-handle trying to download lyrics again (when network issue happens for example)
@@ -175,7 +175,7 @@ function MonitorSpotify () {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', MonitorSpotify)
+app.on('ready', MonitorSpotify);
 
 // Quit when all windows are closed.
 app.on('window-all-closed', function () {
@@ -184,7 +184,7 @@ app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') {
     app.quit()
   }
-})
+});
 
 app.on('activate', function () {
   // On OS X it's common to re-create a window in the app when the
@@ -192,7 +192,7 @@ app.on('activate', function () {
   if (mainWindow === null) {
     MonitorSpotify()
   }
-})
+});
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
