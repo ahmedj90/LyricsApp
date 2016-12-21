@@ -18,4 +18,20 @@ ipcRenderer.on('ping', (event, arg) => {
 
 	var z = document.querySelectorAll("#song_name");
 	z[0].textContent=arg.track.properties.name;	
+
+	var y = document.querySelectorAll("#line");
+	y[0].textContent=arg.line;	
+
+/*  if(track.lyrics.isSet() && track.lyrics.getState() === Enum.lyricsStatus.get('ready')){
+
+		//1-find which line to hgihlight
+        if(track.lyrics.getCurrentLineIndex() != null){
+			//display line (s) however you want from the lrc array with getCurrentLineIndex to highlight current line.
+        }
+
+        //2-display the rest of lines
+    }
+
+*/
+	
 });

@@ -4,6 +4,7 @@ var spotify = require('spotify-node-applescript');
 var Track = require('js/modules/track.module.js');
 var Enum = require('js/modules/common/enums.js');
 const ipcMain = electron.ipcMain;
+var track = new Track();
 
 // Module to control application life.
 const app = electron.app;
@@ -13,26 +14,37 @@ const BrowserWindow = electron.BrowserWindow;
 const path = require('path');
 const url = require('url');
 
+
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow
 
-function spotify_paused_event_handler(){
+function spotifyPausedEventHandler(){
   console.log("Event: Spotify Paused.");
 }
 
-function spotify_stopped_event_handler(){
+function spotifyStoppedEventHandler(){
   console.log("Event: Spotify Stopped.");
 }
 
-function spotify_track_changed_event_handler(){
+function spotifyTrackChangedEventHandler(){
   console.log("Event: Track Changed.");
 }
 
-function spotify_track_position_changed_event_handler(track, current_position){
-  console.log("Event: position changed to: " + current_position);
-  //mainWindow.webContents.send('ping', 5);
-  mainWindow.webContents.send('ping', {current_position: current_position, track: track});
+function spotifyTrackPositionChangedEventHandler(current_position){
+    current_position = current_position*1000;
+    console.log("Event: position changed to: " + current_position);
+    
+    /*
+    This is for testing. Eventaully, we want to send the LRC array and current index to the form event handler and let it deal with how to display
+    the lyrics. I don't want to send just a line of text because that's not general and dynamic enough for the forms to do whatever they want.
+    */
+
+    if(track.lyrics.getCurrentLineIndex() != null)
+      mainWindow.webContents.send('ping', {current_position:current_position, track:track, line: track.lyrics.getCurrentLine() });
+    else
+      mainWindow.webContents.send('ping', {current_position:current_position, track:track, line:'' });
+
 }
 
 function createWindow(){
@@ -49,21 +61,62 @@ function createWindow(){
     // Open the DevTools.
     mainWindow.webContents.openDevTools();
 
-// Listen for async message from renderer process
-/*ipcMain.on('async', (event, arg) => {  
-    // Print 1
-    console.log('main: ' + arg);
-    // Reply on async message from renderer process
-    event.sender.send('ping', 2);
-});*/
-
 }
 
+//Fire status events (stopped, paused)
+function fireSpotifyEvents(spotifyInstance){  
+    if(spotifyInstance && spotifyInstance.state === 'stopped'){
+      spotifyStoppedEventHandler();
+    }
+    else if(spotifyInstance && spotifyInstance.state === 'paused'){
+      spotifyPausedEventHandler();
+    }
+}
+
+//check if track changed and update accordingly
+function checkForTrackChange(spotifyInstance, current_spotify_track){
+  if(spotifyInstance && (spotifyInstance.state === 'playing' || spotifyInstance.state === 'paused')){
+      if(track.isSet() === false || (track.isSet() ===true && current_spotify_track && current_spotify_track.id &&  track.properties.id != current_spotify_track.id)){         
+          //re-initalize track to new info:
+          track = new Track();
+          track.properties = current_spotify_track;
+
+          if(track.isSet())
+            track.loadLyrics();
+          
+          //fire event
+          //console.log("New track: ", track);
+          spotifyTrackChangedEventHandler();
+      }
+  }
+}
+
+//check for track progress and fire events
+function checkForTrackProgressBar(spotifyInstance, current_spotify_track){
+  if(spotifyInstance && (spotifyInstance.state === 'playing')){
+       //check we have lyrics ready for this trac
+       if(spotifyInstance.position && spotifyInstance.position >= 0 && track.lyrics.isSet() && track.lyrics.getState() === Enum.lyricsStatus.get('ready')){
+            //update current line index (need to send time in ms)
+            track.lyrics.updateCurrentLine(spotifyInstance.position * 1000);
+        }
+
+        //fire event
+        spotifyTrackPositionChangedEventHandler(spotifyInstance.position);
+  }
+}
+
+//check for download failure and retry download
+function checkForLyricsDownloadFailure(spotifyInstance, current_spotify_track){
+  if (track.isSet() && track.lyrics.getState() === Enum.lyricsStatus.get('no-internet') && track.lyrics.getTimeSinceLastDownloadTrial() > 30){
+    console.log("Retrying to download lyrics.");
+
+    //download lyrics 
+    //track.LoadLyrics();
+  }
+}
 
 function MonitorSpotify () {
     createWindow();
-
-    var track = new Track();
 
     (function(){
         // do some stuff
@@ -73,51 +126,23 @@ function MonitorSpotify () {
 
           if(isRunning){
                spotify.getState(function(err, spotifyInstance){
-
                   //make sure we got state object of spotify
                   if(spotifyInstance){
-
                     spotify.getTrack(function(err, current_spotify_track){
-                     
+
                       //make sure we got some track from spotify
-                      if(current_spotify_track && current_spotify_track.id){
-                        
+                      if(current_spotify_track && current_spotify_track.id){                          
                           //1-Fire status events
-                          if(spotifyInstance && spotifyInstance.state === 'stopped'){
-                            spotify_stopped_event_handler();
-                          }
-                          else if(spotifyInstance && spotifyInstance.state === 'paused'){
-                            spotify_paused_event_handler();
-                          }
+                          fireSpotifyEvents(spotifyInstance);
 
                           //2-handle track change (handle first time run too)
-                          if(spotifyInstance && (spotifyInstance.state === 'playing' || spotifyInstance.state === 'paused')){
-                              if(track.isSet() === false || (track.isSet() ===true && current_spotify_track && current_spotify_track.id &&  track.properties.id != current_spotify_track.id)){
-                                 
-                                      //re-initalize track to new info:
-                                      track = new Track();
-                                      track.properties = current_spotify_track;
-                                      //if lyrics.state === not set 
-                                      //track.LoadLyrics();
-                                      //fire event
-                                      console.log("New track: ", track);
-
-                                      spotify_track_changed_event_handler();
-                              }
-                          }
+                          checkForTrackChange(spotifyInstance, current_spotify_track);
 
                           //3-handle progress of track
-                          if(spotifyInstance && (spotifyInstance.state === 'playing')){
-                              spotify_track_position_changed_event_handler(track, spotifyInstance.position);
-                          }
+                          checkForTrackProgressBar(spotifyInstance, current_spotify_track);
 
                           //4-handle trying to download lyrics again (when network issue happens for example)
-                          if (track.isSet() && track.lyrics.state === Enum.lyricsStatus.get('no-internet') && track.lyrics.time_since_last_trial() > 30){
-                            console.log("Retrying to download lyrics.");
-
-                            //download lyrics 
-                            //track.LoadLyrics();
-                          }
+                          checkForLyricsDownloadFailure(spotifyInstance, current_spotify_track);
 
                       }
                       else{
